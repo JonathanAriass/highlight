@@ -31,7 +31,14 @@
     },
     "plugins": [
       "expo-sqlite",
-      "expo-fix-ios-simulator-arch"
+      "expo-fix-ios-simulator-arch",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app accesses your photos to perform OCR text recognition.",
+          "cameraPermission": "The app uses the camera to capture images for OCR text recognition."
+        }
+      ]
     ]
   }
 }

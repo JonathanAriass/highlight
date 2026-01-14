@@ -37,8 +37,9 @@ export function OCRResultView({
     setImageSize({ width, height });
 
     // Calculate display size maintaining aspect ratio
+    // Account for: contentContainer padding (16*2) + imageContainer padding (8*2)
     const aspectRatio = width / height;
-    const displayWidth = screenWidth - 32; // Account for padding
+    const displayWidth = screenWidth - 32 - 16;
     const displayHeight = displayWidth / aspectRatio;
     setDisplaySize({ width: displayWidth, height: displayHeight });
   }, []);

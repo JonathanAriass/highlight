@@ -27,7 +27,9 @@ export function HomeScreen() {
   }, [pickFromCamera, navigation]);
 
   const handleGallery = useCallback(async () => {
+    console.log('HomeScreen: Gallery button pressed');
     const uri = await pickFromGallery();
+    console.log('HomeScreen: Gallery returned URI:', uri);
     if (uri) {
       navigation.navigate('Scan', { imageUri: uri });
     }
