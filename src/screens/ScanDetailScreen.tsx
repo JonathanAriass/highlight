@@ -11,8 +11,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { OCRResultView } from '../components';
-import { useScans } from '../hooks';
-import type { RootStackParamList, Scan } from '../types';
+import { useScans, useOCR, useLLM } from '../hooks';
+import type { RootStackParamList, Scan, TextBlock, BoundingBox } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ScanDetail'>;
 type DetailRouteProp = RouteProp<RootStackParamList, 'ScanDetail'>;
@@ -22,28 +22,106 @@ export function ScanDetailScreen() {
   const route = useRoute<DetailRouteProp>();
   const { scanId } = route.params;
 
-  const { getScanById, updateTextBlock, deleteScan } = useScans();
+  const { getScanById, updateTextBlock, updateScanBlocks, deleteScan, saveSummary } = useScans();
+  const { recognize, isProcessing } = useOCR();
+  const {
+    summary: llmSummary,
+    isProcessing: isSummarizing,
+    streamingText,
+    isReady: isLLMReady,
+    summarize,
+    downloadModel,
+    getDownloadedModels,
+  } = useLLM({ autoInitialize: true });
+
   const [scan, setScan] = useState<Scan | null>(null);
+  const [blocks, setBlocks] = useState<TextBlock[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isModelDownloaded, setIsModelDownloaded] = useState(false);
+  const [displaySummary, setDisplaySummary] = useState<string | undefined>();
 
   useEffect(() => {
     const loadScan = async () => {
       const loadedScan = await getScanById(scanId);
       setScan(loadedScan);
+      if (loadedScan) {
+        setBlocks(loadedScan.blocks);
+        setDisplaySummary(loadedScan.summary);
+      }
       setIsLoading(false);
     };
     loadScan();
   }, [scanId, getScanById]);
 
+  // Check if model is downloaded
+  useEffect(() => {
+    const checkModel = async () => {
+      const downloaded = await getDownloadedModels();
+      setIsModelDownloaded(downloaded.length > 0);
+    };
+    checkModel();
+  }, [getDownloadedModels]);
+
+  // Update displaySummary and save when new summary is generated
+  useEffect(() => {
+    if (llmSummary?.text) {
+      setDisplaySummary(llmSummary.text);
+      saveSummary(scanId, llmSummary.text, llmSummary.modelName);
+    }
+  }, [llmSummary, scanId, saveSummary]);
+
   const handleBlockUpdate = useCallback(
     async (blockId: string, correctedText: string) => {
       await updateTextBlock(blockId, correctedText);
-      // Refresh the scan data
-      const updatedScan = await getScanById(scanId);
-      setScan(updatedScan);
+      // Update local state
+      setBlocks((prevBlocks) =>
+        prevBlocks.map((block) =>
+          block.id === blockId ? { ...block, correctedText } : block
+        )
+      );
     },
-    [scanId, updateTextBlock, getScanById]
+    [updateTextBlock]
   );
+
+  const handleRegionScan = useCallback(async (region: BoundingBox) => {
+    if (!scan) return;
+    const regionResult = await recognize(scan.imageUri, region);
+    if (regionResult) {
+      const newBlocks = blocks.filter((block) => {
+        const box = block.boundingBox;
+        const overlaps =
+          box.x < region.x + region.width &&
+          box.x + box.width > region.x &&
+          box.y < region.y + region.height &&
+          box.y + box.height > region.y;
+        return !overlaps;
+      });
+      const updatedBlocks = [...newBlocks, ...regionResult.blocks];
+      setBlocks(updatedBlocks);
+      // Save to database
+      await updateScanBlocks(scanId, updatedBlocks);
+    }
+  }, [scan, blocks, recognize, scanId, updateScanBlocks]);
+
+  const handleResummarize = useCallback(() => {
+    const currentText = blocks
+      .map((block) => block.correctedText || block.text)
+      .join('\n');
+    if (currentText.trim()) {
+      // Pass blocks for better structured summarization
+      summarize(currentText, blocks);
+    }
+  }, [blocks, summarize]);
+
+  const handleDownloadModel = useCallback(async () => {
+    try {
+      await downloadModel();
+      const downloaded = await getDownloadedModels();
+      setIsModelDownloaded(downloaded.length > 0);
+    } catch (err) {
+      Alert.alert('Download Error', 'Failed to download model. Please try again.');
+    }
+  }, [downloadModel, getDownloadedModels]);
 
   const handleDelete = useCallback(() => {
     Alert.alert(
@@ -120,18 +198,17 @@ export function ScanDetailScreen() {
 
       <OCRResultView
         imageUri={scan.imageUri}
-        blocks={scan.blocks}
+        blocks={blocks}
+        isProcessing={isProcessing}
         onBlockUpdate={handleBlockUpdate}
+        onRegionScan={handleRegionScan}
+        summary={displaySummary}
+        isSummarizing={isSummarizing}
+        streamingText={streamingText}
+        onResummarize={handleResummarize}
+        onDownloadModel={handleDownloadModel}
+        isModelDownloaded={isModelDownloaded}
       />
-
-      <View style={styles.footer}>
-        <View style={styles.footerInfo}>
-          <Text style={styles.footerLabel}>Full extracted text:</Text>
-          <Text style={styles.footerText} numberOfLines={3}>
-            {scan.fullText || 'No text detected'}
-          </Text>
-        </View>
-      </View>
     </SafeAreaView>
   );
 }
@@ -211,23 +288,5 @@ const styles = StyleSheet.create({
   },
   deleteButtonText: {
     fontSize: 20,
-  },
-  footer: {
-    padding: 16,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-  },
-  footerInfo: {},
-  footerLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#666',
-    marginBottom: 8,
-  },
-  footerText: {
-    fontSize: 14,
-    color: '#1a1a1a',
-    lineHeight: 20,
   },
 });

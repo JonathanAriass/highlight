@@ -10,8 +10,10 @@ interface UseScansReturn {
   createScan: (imageUri: string, fullText: string, blocks: TextBlock[]) => Promise<Scan | null>;
   getScanById: (id: string) => Promise<Scan | null>;
   updateTextBlock: (blockId: string, correctedText: string) => Promise<void>;
+  updateScanBlocks: (scanId: string, blocks: TextBlock[]) => Promise<void>;
   deleteScan: (id: string) => Promise<void>;
   refreshScans: () => Promise<void>;
+  saveSummary: (scanId: string, summaryText: string, modelName: string) => Promise<void>;
 }
 
 export function useScans(): UseScansReturn {
@@ -80,6 +82,19 @@ export function useScans(): UseScansReturn {
     [repository, refreshScans]
   );
 
+  const updateScanBlocks = useCallback(
+    async (scanId: string, blocks: TextBlock[]): Promise<void> => {
+      try {
+        await repository.updateScanBlocks(scanId, blocks);
+        await refreshScans();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to update scan blocks';
+        setError(message);
+      }
+    },
+    [repository, refreshScans]
+  );
+
   const deleteScan = useCallback(
     async (id: string): Promise<void> => {
       try {
@@ -93,6 +108,18 @@ export function useScans(): UseScansReturn {
     [repository]
   );
 
+  const saveSummary = useCallback(
+    async (scanId: string, summaryText: string, modelName: string): Promise<void> => {
+      try {
+        await repository.saveSummary(scanId, summaryText, modelName);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to save summary';
+        setError(message);
+      }
+    },
+    [repository]
+  );
+
   return {
     scans,
     isLoading,
@@ -100,7 +127,9 @@ export function useScans(): UseScansReturn {
     createScan,
     getScanById,
     updateTextBlock,
+    updateScanBlocks,
     deleteScan,
     refreshScans,
+    saveSummary,
   };
 }

@@ -45,27 +45,51 @@ export class CloudVisionProvider implements IOCRService {
     });
   }
 
-  async recognize(imageUri: string): Promise<OCRResult> {
+  async recognize(imageUri: string, cropRegion?: BoundingBox): Promise<OCRResult> {
     try {
       console.log('OCR: Starting image processing...');
       console.log('OCR: Original image URI:', imageUri);
+      console.log('OCR: Crop region:', cropRegion);
 
       // Get original image dimensions
       const originalSize = await this.getImageSize(imageUri);
       console.log('OCR: Original dimensions:', originalSize.width, 'x', originalSize.height);
 
+      // Build manipulation actions
+      const actions: Parameters<typeof manipulateAsync>[1] = [];
+
+      // Add crop action if region specified
+      if (cropRegion) {
+        actions.push({
+          crop: {
+            originX: Math.max(0, Math.round(cropRegion.x)),
+            originY: Math.max(0, Math.round(cropRegion.y)),
+            width: Math.min(Math.round(cropRegion.width), originalSize.width - Math.round(cropRegion.x)),
+            height: Math.min(Math.round(cropRegion.height), originalSize.height - Math.round(cropRegion.y)),
+          },
+        });
+      }
+
+      // Add resize for compression
+      actions.push({ resize: { width: 1000 } });
+
       // Compress image to stay under 1MB limit
       const compressed = await manipulateAsync(
         imageUri,
-        [{ resize: { width: 1000 } }], // Resize to max 1000px width
-        { compress: 0.5, format: SaveFormat.JPEG } // More aggressive compression
+        actions,
+        { compress: 0.5, format: SaveFormat.JPEG }
       );
       console.log('OCR: Compressed image URI:', compressed.uri);
       console.log('OCR: Compressed dimensions:', compressed.width, 'x', compressed.height);
 
-      // Calculate scale factors to convert coordinates back to original size
-      const scaleX = originalSize.width / compressed.width;
-      const scaleY = originalSize.height / compressed.height;
+      // Calculate the size after cropping (before compression)
+      const croppedSize = cropRegion
+        ? { width: cropRegion.width, height: cropRegion.height }
+        : originalSize;
+
+      // Calculate scale factors to convert coordinates back to cropped size
+      const scaleX = croppedSize.width / compressed.width;
+      const scaleY = croppedSize.height / compressed.height;
       console.log('OCR: Scale factors:', scaleX, 'x', scaleY);
 
       // Read compressed image as base64
@@ -102,7 +126,7 @@ export class CloudVisionProvider implements IOCRService {
         throw new Error(result.ErrorMessage?.[0] || 'OCR processing failed');
       }
 
-      return this.transformResult(result, scaleX, scaleY);
+      return this.transformResult(result, scaleX, scaleY, cropRegion);
     } catch (error) {
       console.error('Cloud OCR recognition failed:', error);
       throw error;
@@ -129,10 +153,15 @@ export class CloudVisionProvider implements IOCRService {
       }>;
     },
     scaleX: number,
-    scaleY: number
+    scaleY: number,
+    cropRegion?: BoundingBox
   ): OCRResult {
     const blocks: TextBlock[] = [];
     let fullText = '';
+
+    // Offset to add for cropped regions (to map back to original image coordinates)
+    const offsetX = cropRegion?.x ?? 0;
+    const offsetY = cropRegion?.y ?? 0;
 
     if (result.ParsedResults && result.ParsedResults.length > 0) {
       const parsed = result.ParsedResults[0];
@@ -143,10 +172,10 @@ export class CloudVisionProvider implements IOCRService {
         for (const line of parsed.TextOverlay.Lines) {
           for (const word of line.Words) {
             if (word.WordText.trim()) {
-              // Scale bounding box from compressed to original coordinates
+              // Scale bounding box from compressed to cropped size, then offset to original coordinates
               const boundingBox: BoundingBox = {
-                x: word.Left * scaleX,
-                y: word.Top * scaleY,
+                x: word.Left * scaleX + offsetX,
+                y: word.Top * scaleY + offsetY,
                 width: word.Width * scaleX,
                 height: word.Height * scaleY,
               };

@@ -8,6 +8,7 @@ interface TextBlockOverlayProps {
   displaySize: Size;
   onPress: (block: TextBlock) => void;
   isSelected?: boolean;
+  isDimmed?: boolean;
 }
 
 function scaleBox(
@@ -32,12 +33,16 @@ export function TextBlockOverlay({
   displaySize,
   onPress,
   isSelected = false,
+  isDimmed = false,
 }: TextBlockOverlayProps) {
   const scaledBox = scaleBox(block.boundingBox, imageSize, displaySize);
   const isCorrected = !!block.correctedText;
 
   // Determine highlight color based on state
   const getBackgroundColor = () => {
+    if (isDimmed) {
+      return 'rgba(128, 128, 128, 0.2)'; // Gray when dimmed
+    }
     if (isSelected) {
       return 'rgba(255, 204, 0, 0.5)'; // Yellow for selected
     }
@@ -48,6 +53,9 @@ export function TextBlockOverlay({
   };
 
   const getBorderColor = () => {
+    if (isDimmed) {
+      return '#888'; // Gray when dimmed
+    }
     if (isSelected) {
       return '#FFcc00';
     }

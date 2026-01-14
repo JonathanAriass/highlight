@@ -1,6 +1,6 @@
 import { type SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   const result = await db.getFirstAsync<{ user_version: number }>(
@@ -39,11 +39,22 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     currentDbVersion = 1;
   }
 
-  // Future migrations can be added here
-  // if (currentDbVersion === 1) {
-  //   // Migration from version 1 to 2
-  //   currentDbVersion = 2;
-  // }
+  // Migration from version 1 to 2: Add summaries table
+  if (currentDbVersion === 1) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS summaries (
+        id TEXT PRIMARY KEY NOT NULL,
+        scanId TEXT NOT NULL UNIQUE,
+        summaryText TEXT NOT NULL,
+        modelName TEXT NOT NULL,
+        createdAt INTEGER NOT NULL,
+        FOREIGN KEY (scanId) REFERENCES scans(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_summaries_scanId ON summaries(scanId);
+    `);
+    currentDbVersion = 2;
+  }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }

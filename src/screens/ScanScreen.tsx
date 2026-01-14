@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,8 +10,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { OCRResultView } from '../components';
-import { useOCR, useScans } from '../hooks';
-import type { RootStackParamList, TextBlock } from '../types';
+import { useOCR, useScans, useLLM } from '../hooks';
+import type { RootStackParamList, TextBlock, BoundingBox } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Scan'>;
 type ScanRouteProp = RouteProp<RootStackParamList, 'Scan'>;
@@ -23,9 +23,21 @@ export function ScanScreen() {
 
   const { recognize, result, isProcessing, error, isReady } = useOCR();
   const { createScan } = useScans();
+  const {
+    summary,
+    isProcessing: isSummarizing,
+    streamingText,
+    isReady: isLLMReady,
+    summarize,
+    downloadModel,
+    getDownloadedModels,
+  } = useLLM({ autoInitialize: true });
 
   const [blocks, setBlocks] = useState<TextBlock[]>([]);
   const [isSaved, setIsSaved] = useState(false);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [isModelDownloaded, setIsModelDownloaded] = useState(false);
+  const hasSummarized = useRef(false);
 
   // Run OCR when screen loads
   useEffect(() => {
@@ -50,6 +62,33 @@ export function ScanScreen() {
     }
   }, [error, navigation]);
 
+  // Check if model is downloaded
+  useEffect(() => {
+    const checkModel = async () => {
+      const downloaded = await getDownloadedModels();
+      console.log('[ScanScreen] Downloaded models:', downloaded.length, downloaded.map(m => m.id));
+      setIsModelDownloaded(downloaded.length > 0);
+    };
+    checkModel();
+  }, [getDownloadedModels]);
+
+  // Auto-trigger summarization when OCR completes and LLM is ready
+  useEffect(() => {
+    console.log('[ScanScreen] Auto-summarize check:', {
+      hasResult: !!result,
+      isLLMReady,
+      hasSummarized: hasSummarized.current,
+      textLength: result?.text?.length ?? 0,
+      blocksCount: result?.blocks?.length ?? 0,
+    });
+    if (result && isLLMReady && !hasSummarized.current && result.text.trim()) {
+      console.log('[ScanScreen] Triggering auto-summarization with blocks...');
+      hasSummarized.current = true;
+      // Pass blocks for better structured summarization
+      summarize(result.text, result.blocks);
+    }
+  }, [result, isLLMReady, summarize]);
+
   const handleBlockUpdate = useCallback((blockId: string, correctedText: string) => {
     setBlocks((prevBlocks) =>
       prevBlocks.map((block) =>
@@ -57,6 +96,52 @@ export function ScanScreen() {
       )
     );
   }, []);
+
+  const handleResummarize = useCallback(() => {
+    // Get the current text (with corrections applied)
+    const currentText = blocks
+      .map((block) => block.correctedText || block.text)
+      .join('\n');
+    if (currentText.trim()) {
+      // Pass blocks for better structured summarization
+      summarize(currentText, blocks);
+    }
+  }, [blocks, summarize]);
+
+  const handleDownloadModel = useCallback(async () => {
+    console.log('[ScanScreen] handleDownloadModel called - starting download...');
+    try {
+      await downloadModel();
+      console.log('[ScanScreen] Download complete, checking models...');
+      const downloaded = await getDownloadedModels();
+      console.log('[ScanScreen] Models after download:', downloaded.length);
+      setIsModelDownloaded(downloaded.length > 0);
+    } catch (err) {
+      console.error('[ScanScreen] Download failed:', err);
+      Alert.alert('Download Error', 'Failed to download model. Please try again.');
+    }
+  }, [downloadModel, getDownloadedModels]);
+
+  const handleRegionScan = useCallback(async (region: BoundingBox) => {
+    const regionResult = await recognize(imageUri, region);
+    if (regionResult) {
+      setBlocks((prevBlocks) => {
+        // Remove blocks that overlap with the selected region
+        const blocksOutsideRegion = prevBlocks.filter((block) => {
+          const box = block.boundingBox;
+          // Check if block overlaps with selected region
+          const overlaps =
+            box.x < region.x + region.width &&
+            box.x + box.width > region.x &&
+            box.y < region.y + region.height &&
+            box.y + box.height > region.y;
+          return !overlaps;
+        });
+        // Add new blocks from region scan
+        return [...blocksOutsideRegion, ...regionResult.blocks];
+      });
+    }
+  }, [imageUri, recognize]);
 
   const handleSave = useCallback(async () => {
     if (!result) return;
@@ -109,9 +194,17 @@ export function ScanScreen() {
         blocks={blocks}
         isProcessing={isProcessing || !isReady}
         onBlockUpdate={handleBlockUpdate}
+        onRegionScan={handleRegionScan}
+        onSelectionModeChange={setIsSelectionMode}
+        summary={summary?.text}
+        isSummarizing={isSummarizing}
+        streamingText={streamingText}
+        onResummarize={handleResummarize}
+        onDownloadModel={handleDownloadModel}
+        isModelDownloaded={isModelDownloaded}
       />
 
-      {!isProcessing && result && (
+      {!isProcessing && result && !isSelectionMode && (
         <View style={styles.footer}>
           <TouchableOpacity
             style={styles.discardButton}

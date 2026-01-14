@@ -1,4 +1,4 @@
-import type { OCRResult } from '../../types';
+import type { OCRResult, BoundingBox } from '../../types';
 
 /**
  * Abstract interface for OCR providers.
@@ -8,9 +8,10 @@ export interface IOCRService {
   /**
    * Recognize text from an image
    * @param imageUri - Local URI of the image to process
+   * @param cropRegion - Optional region to crop before OCR (coordinates in original image space)
    * @returns OCR result with detected text blocks and bounding boxes
    */
-  recognize(imageUri: string): Promise<OCRResult>;
+  recognize(imageUri: string, cropRegion?: BoundingBox): Promise<OCRResult>;
 
   /**
    * Get the name of this OCR provider

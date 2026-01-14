@@ -1,6 +1,6 @@
 import { type SQLiteDatabase } from 'expo-sqlite';
 import { generateId } from '../../utils/id';
-import type { Scan, TextBlock, ScanRow, TextBlockRow } from '../../types';
+import type { Scan, TextBlock, ScanRow, TextBlockRow, SummaryRow } from '../../types';
 
 export class ScanRepository {
   constructor(private db: SQLiteDatabase) {}
@@ -66,6 +66,12 @@ export class ScanRepository {
       correctedText: row.correctedText ?? undefined,
     }));
 
+    // Get summary if exists
+    const summaryRow = await this.db.getFirstAsync<SummaryRow>(
+      'SELECT * FROM summaries WHERE scanId = ?',
+      id
+    );
+
     return {
       id: scanRow.id,
       imageUri: scanRow.imageUri,
@@ -73,6 +79,8 @@ export class ScanRepository {
       blocks,
       createdAt: scanRow.createdAt,
       updatedAt: scanRow.updatedAt ?? undefined,
+      summary: summaryRow?.summaryText,
+      summaryModelName: summaryRow?.modelName,
     };
   }
 
@@ -162,5 +170,42 @@ export class ScanRepository {
       updatedAt,
       scanId
     );
+  }
+
+  // Summary methods
+
+  async saveSummary(
+    scanId: string,
+    summaryText: string,
+    modelName: string
+  ): Promise<void> {
+    const id = generateId();
+    const createdAt = Date.now();
+
+    // Upsert: delete existing and insert new
+    await this.db.runAsync('DELETE FROM summaries WHERE scanId = ?', scanId);
+    await this.db.runAsync(
+      `INSERT INTO summaries (id, scanId, summaryText, modelName, createdAt)
+       VALUES (?, ?, ?, ?, ?)`,
+      id,
+      scanId,
+      summaryText,
+      modelName,
+      createdAt
+    );
+  }
+
+  async getSummary(scanId: string): Promise<{ summaryText: string; modelName: string } | null> {
+    const row = await this.db.getFirstAsync<SummaryRow>(
+      'SELECT * FROM summaries WHERE scanId = ?',
+      scanId
+    );
+
+    if (!row) return null;
+    return { summaryText: row.summaryText, modelName: row.modelName };
+  }
+
+  async deleteSummary(scanId: string): Promise<void> {
+    await this.db.runAsync('DELETE FROM summaries WHERE scanId = ?', scanId);
   }
 }

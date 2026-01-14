@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { getOCRProvider, type IOCRService } from '../services/ocr';
-import type { OCRResult } from '../types';
+import type { OCRResult, BoundingBox } from '../types';
 
 interface UseOCRState {
   result: OCRResult | null;
@@ -11,7 +11,7 @@ interface UseOCRState {
 }
 
 interface UseOCRReturn extends UseOCRState {
-  recognize: (imageUri: string) => Promise<OCRResult | null>;
+  recognize: (imageUri: string, cropRegion?: BoundingBox) => Promise<OCRResult | null>;
   reset: () => void;
 }
 
@@ -47,7 +47,7 @@ export function useOCR(): UseOCRReturn {
     };
   }, []);
 
-  const recognize = useCallback(async (imageUri: string): Promise<OCRResult | null> => {
+  const recognize = useCallback(async (imageUri: string, cropRegion?: BoundingBox): Promise<OCRResult | null> => {
     if (!providerRef.current) {
       setState((prev) => ({ ...prev, error: 'OCR provider not initialized' }));
       return null;
@@ -62,7 +62,7 @@ export function useOCR(): UseOCRReturn {
     }));
 
     try {
-      const result = await providerRef.current.recognize(imageUri);
+      const result = await providerRef.current.recognize(imageUri, cropRegion);
       setState((prev) => ({
         ...prev,
         result,

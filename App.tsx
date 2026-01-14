@@ -7,7 +7,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Suspense } from 'react';
 
-import { HomeScreen, ScanScreen, ScanDetailScreen } from './src/screens';
+import { HomeScreen, ScanScreen, ScanDetailScreen, SettingsScreen } from './src/screens';
 import { migrateDbIfNeeded, DATABASE_NAME } from './src/services/database';
 import type { RootStackParamList } from './src/types';
 
@@ -36,6 +36,7 @@ function Navigation() {
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="Scan" component={ScanScreen} />
         <Stack.Screen name="ScanDetail" component={ScanDetailScreen} />
+        <Stack.Screen name="Settings" component={SettingsScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

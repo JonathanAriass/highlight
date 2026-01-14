@@ -49,10 +49,19 @@ export function HomeScreen() {
     [deleteScan]
   );
 
+  const handleSettings = useCallback(() => {
+    navigation.navigate('Settings');
+  }, [navigation]);
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>OCR Scanner</Text>
+        <View style={styles.headerTop}>
+          <Text style={styles.title}>OCR Scanner</Text>
+          <TouchableOpacity onPress={handleSettings} style={styles.settingsButton}>
+            <Text style={styles.settingsIcon}>⚙️</Text>
+          </TouchableOpacity>
+        </View>
         <Text style={styles.subtitle}>Extract and edit text from images</Text>
       </View>
 
@@ -90,10 +99,21 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 8,
   },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
     color: '#1a1a1a',
+  },
+  settingsButton: {
+    padding: 8,
+  },
+  settingsIcon: {
+    fontSize: 24,
   },
   subtitle: {
     fontSize: 16,

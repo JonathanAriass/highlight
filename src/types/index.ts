@@ -30,6 +30,8 @@ export interface Scan {
   blocks: TextBlock[];
   createdAt: number;
   updatedAt?: number;
+  summary?: string;
+  summaryModelName?: string;
 }
 
 // Image size for scaling calculations
@@ -43,6 +45,7 @@ export type RootStackParamList = {
   Home: undefined;
   Scan: { imageUri: string };
   ScanDetail: { scanId: string };
+  Settings: undefined;
 };
 
 // OCR Service interface - abstraction for different providers
@@ -67,4 +70,43 @@ export interface TextBlockRow {
   correctedText: string | null;
   boundingBox: string; // JSON stringified
   confidence: number;
+}
+
+// LLM Summary result
+export interface SummaryResult {
+  id: string;
+  text: string;
+  generatedAt: number;
+  modelName: string;
+  promptTokens?: number;
+  completionTokens?: number;
+}
+
+// LLM Model information
+export interface ModelInfo {
+  id: string;
+  name: string;
+  filename: string;
+  size: number;
+  downloadUrl: string;
+  isDownloaded: boolean;
+  downloadProgress?: number;
+  localPath?: string;
+}
+
+// Model download progress
+export interface ModelDownloadProgress {
+  modelId: string;
+  bytesDownloaded: number;
+  totalBytes: number;
+  progress: number;
+}
+
+// Database row for summaries
+export interface SummaryRow {
+  id: string;
+  scanId: string;
+  summaryText: string;
+  modelName: string;
+  createdAt: number;
 }
